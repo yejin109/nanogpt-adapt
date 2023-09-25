@@ -34,6 +34,7 @@ from metric import get_memorization_clm, get_entropy, get_token_acc, get_perr
 # -----------------------------------------------------------------------------
 # NOTICE: Add metric
 mask_num = 1
+mask_train = 0
 
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
@@ -213,6 +214,11 @@ if compile:
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
 
+# NOTICE : Adaptive training
+os.environ['MASK_TRAIN'] = str(mask_train)
+past_metric = -1
+current_metric = None
+
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
@@ -233,7 +239,15 @@ def estimate_loss():
                 logits, loss = model(X, Y)
             logits_cpu = logits.detach().cpu().numpy()
             Y_cpu = Y.detach().cpu().numpy()
-            entropies += get_entropy(logits_cpu, Y_cpu)
+
+            # print('logits')
+            # print(logits_cpu.shape)
+            # print(logits_cpu)
+            # print('='*100)
+            # print('Y')
+            # print(Y.shape)
+            # print(Y)
+            # entropies += get_entropy(logits_cpu, Y_cpu)
             perrs += get_perr(logits_cpu, Y_cpu)
             memos += get_memorization_clm(logits_cpu, Y_cpu, mask_num)
             token_accs += get_token_acc(logits_cpu, Y_cpu)
@@ -241,7 +255,7 @@ def estimate_loss():
             losses[k] = loss.item()
 
         out[split] = losses.mean()
-        out_metric[f'{split}/entropy'] = entropies / cnt
+        # out_metric[f'{split}/entropy'] = entropies / cnt
         out_metric[f'{split}/perr'] = perrs / cnt
         out_metric[f'{split}/memorization'] = memos / cnt
         out_metric[f'{split}/token_acc'] = token_accs / cnt
@@ -287,14 +301,24 @@ while True:
         losses, metrics = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
-            log = dict({
+            logs = dict({
                 "iter": iter_num,
                 "train/loss": losses['train'],
                 "val/loss": losses['val'],
+                "metric/mask_train": int(os.environ['MASK_TRAIN']),
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             }, **{k: v for k, v in metrics.items()})
-            wandb.log()
+            wandb.log(logs)
+
+        current_metric = metrics['train/memorization']
+        if current_metric > past_metric + 1e-6:
+            if int(os.environ['MASK_TRAIN']) < block_size-1:
+                os.environ['MASK_TRAIN'] = str(int(os.environ['MASK_TRAIN'])+1)
+        elif current_metric < past_metric - 1e-6:
+            if int(os.environ['MASK_TRAIN']) != 0:
+                os.environ['MASK_TRAIN'] = str(int(os.environ['MASK_TRAIN']) - 1)
+
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
