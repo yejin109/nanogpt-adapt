@@ -231,10 +231,12 @@ def estimate_loss():
             X, Y = get_batch(split)
             with ctx:
                 logits, loss = model(X, Y)
-            entropies += get_entropy(logits, Y)
-            perrs += get_perr(logits, Y)
-            memos += get_memorization_clm(logits, Y, mask_num)
-            token_accs += get_token_acc(logits, Y)
+            logits_cpu = logits.detach().cpu().numpy()
+            Y_cpu = Y.detach().cpu().numpy()
+            entropies += get_entropy(logits_cpu, Y_cpu)
+            perrs += get_perr(logits_cpu, Y_cpu)
+            memos += get_memorization_clm(logits_cpu, Y_cpu, mask_num)
+            token_accs += get_token_acc(logits_cpu, Y_cpu)
             cnt += 1
             losses[k] = loss.item()
 

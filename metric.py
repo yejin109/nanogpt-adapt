@@ -43,8 +43,7 @@ def get_memorization_clm(_logits: torch.Tensor, _labels: torch.Tensor, mask_num)
     mask = list(map(lambda x: get_mask(x), _logits))
     mask_onehot = nn.functional.one_hot(torch.Tensor(mask).long().to('cuda:0'), num_classes=_chunk_size).bool()
 
-    _preds = _logits.detach().cpu().numpy().argmax(-1)
+    _preds = _logits.argmax(-1)
 
-    _labels = _labels.detach().cpu().numpy()
     mask_onehot = mask_onehot.detach().cpu().numpy()
     return np.mean(_preds[mask_onehot] == _labels[mask_onehot])
