@@ -318,6 +318,7 @@ while True:
         elif current_metric < past_metric - 1e-6:
             if int(os.environ['MASK_TRAIN']) != 0:
                 os.environ['MASK_TRAIN'] = str(int(os.environ['MASK_TRAIN']) - 1)
+        past_metric = current_metric
 
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
